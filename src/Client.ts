@@ -279,6 +279,9 @@ export class Client extends AsyncEventEmitter<Events> {
 
     this.events = new EventClient(1, "json", this.options);
     this.events.on("error", (error) => this.emit("error", error));
+    // Web client handles failures via connection state + lastError; prevent
+    // unhandled error events from crashing the renderer when nothing listens.
+    this.on("error", () => {});
     this.events.on("state", (state) => {
       switch (state) {
         case ConnectionState.Connected:
