@@ -188,8 +188,9 @@ export class EventClient<
     };
 
     this.#socket.onerror = (error) => {
+      // Track for lifecycle recovery via lastError; do not emit — raw DOM Event
+      // objects are not Revolt errors and crash when no listener is attached.
       this.#lastError = { type: "socket", data: error };
-      this.emit("error", error as never);
     };
 
     this.#socket.onmessage = (event) => {

@@ -24,6 +24,7 @@ import {
   calculatePermission,
 } from "../permissions/calculator.js";
 import { Permission } from "../permissions/definitions.js";
+import { rememberChannelAck } from "../storage/ChannelAckStore.js";
 
 import type { ChannelWebhook } from "./ChannelWebhook.js";
 import type { File } from "./File.js";
@@ -721,6 +722,22 @@ export class Channel {
   #ackTimeout?: number;
   #ackLimit?: number;
   #manuallyMarked?: boolean;
+  #pendingAckMessageId?: string;
+
+  /**
+   * Flush a debounced ack immediately (e.g. on page hide / channel leave)
+   */
+  flushPendingAck(): void {
+    if (!this.#pendingAckMessageId) return;
+    const lastMessageId = this.#pendingAckMessageId;
+    clearTimeout(this.#ackTimeout);
+    this.#ackTimeout = undefined;
+    this.#ackLimit = undefined;
+    this.#pendingAckMessageId = undefined;
+    void this.#collection.client.api.put(
+      `/channels/${this.id}/ack/${lastMessageId as ""}`,
+    );
+  }
 
   /**
    * Mark a channel as read
@@ -764,6 +781,12 @@ export class Channel {
       }
     });
 
+    const userId = this.#collection.client.user?.id;
+    if (userId && !skipRequest) {
+      // Survive cold start if the server ack pipeline drops the write
+      rememberChannelAck(userId, this.id, lastMessageId);
+    }
+
     // Skip request if not needed
     if (skipRequest) return;
 
@@ -772,6 +795,7 @@ export class Channel {
      */
     const performAck = (): void => {
       this.#ackLimit = undefined;
+      this.#pendingAckMessageId = undefined;
       this.#collection.client.api.put(
         `/channels/${this.id}/ack/${lastMessageId as ""}`,
       );
@@ -780,6 +804,7 @@ export class Channel {
     if (skipRateLimiter) return performAck();
 
     clearTimeout(this.#ackTimeout);
+    this.#pendingAckMessageId = lastMessageId;
     if (this.#ackLimit && +new Date() > this.#ackLimit) {
       performAck();
     }
