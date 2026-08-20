@@ -658,6 +658,19 @@ export async function handleEvent(
     case "ChannelAck": {
       const channel = client.channels.getOrPartial(event.id);
       if (channel) {
+        batch(() => {
+          const unread = client.channelUnreads.for(channel);
+          client.channelUnreads.updateUnderlyingObject(
+            channel.id,
+            "lastMessageId",
+            event.message_id,
+          );
+          for (const mentionId of [...unread.messageMentionIds]) {
+            if (mentionId.localeCompare(event.message_id) <= 0) {
+              unread.messageMentionIds.delete(mentionId);
+            }
+          }
+        });
         client.emit("channelAcknowledged", channel, event.message_id);
       }
       break;
