@@ -319,12 +319,16 @@ export async function handleEvent(
           }
         }
 
+        // Ready only lists channels that currently have participants. Clear
+        // every channel first so empty rooms do not keep stale previews.
+        for (const channel of client.channels.values()) {
+          channel.voiceParticipants.clear();
+        }
+
         if (event.voice_states) {
           for (const state of event.voice_states) {
             const channel = client.channels.get(state.id);
             if (channel) {
-              channel.voiceParticipants.clear();
-
               for (const participant of state.participants) {
                 channel.voiceParticipants.set(
                   participant.id,
@@ -1022,7 +1026,17 @@ export async function handleEvent(
       break;
     }
     case "VoiceChannelMove": {
-      // todo
+      const from = client.channels.getOrPartial(event.from);
+      const to = client.channels.getOrPartial(event.to);
+      if (from) {
+        from.voiceParticipants.delete(event.user);
+      }
+      if (to) {
+        to.voiceParticipants.set(
+          event.state.id,
+          new VoiceParticipant(client, event.state),
+        );
+      }
       break;
     }
     case "UserVoiceStateUpdate": {
@@ -1034,7 +1048,7 @@ export async function handleEvent(
       break;
     }
     case "UserMoveVoiceChannel": {
-      // todo
+      // Handled by the RTC layer when the server forces a node move.
       break;
     }
     case "UserSlowmodes": {
